@@ -4,43 +4,89 @@
  * | --- | ----- |
  * | binance_api_key | {Api Key} |
  * | binance_secret_key | {Secret Key} |
+ * | coinmarketcap_api_key | {Api Key} | (可選)(申請: https://coinmarketcap.com/api/)
  */
 
 const CACHE_TIMEOUT = 20; // 資料快取時間
 const cache = CacheService.getDocumentCache();
-var dexscreenerProvider, binanceProvider, pendleProvider;
+var dexscreenerProvider, binanceProvider, pendleProvider, coinmarketcapProvider;
 
 function test() {
-  let a = binance_price("ADAUSDT")
-  console.log(a)
-}
-
-
-function binance_price(market) {
-  Utilities.sleep(Math.random() * 1000)
-  const data = getBinanceProvider().getPrice(market);
-  return parseFloat(data?.lastPrice)
-}
-
-function binance_price_change24h(market) {
-  Utilities.sleep(Math.random() * 1000)
-  const data = getBinanceProvider().getPrice(market);
-  return parseFloat(data?.priceChangePercent) / 100
+  let a = coinmarketcap_price("ADA");
+  console.log(a);
 }
 
 /**
- * Google Sheet函式 - 取得binance的抵押借貸資料
+ * 取得Coinmarketcap的最新價格
+ * @param name 代幣名稱
+ * @returns {number} 價格
+ * @customfunction
+ * @example =coinmarketcap_price("ETH")
+ */
+function coinmarketcap_price(name) {
+  Utilities.sleep(Math.random() * 1000);
+  return parseFloat(getCoinmarketcapProvider().getData(name).price);
+}
+
+/**
+ * 取得Coinmarketcap的24h價格變化
+ * @param name 代幣名稱
+ * @returns {number} 價格變化(1 ~ -1)
+ * @customfunction
+ * @example =coinmarketcap_price_change24h("ETH")
+ */
+function coinmarketcap_price_change24h(name) {
+  Utilities.sleep(Math.random() * 1000);
+  return parseFloat(getCoinmarketcapProvider().getData(name).priceChange24h / 100);
+}
+
+/**
+ * 取得binance的最新價格
+ * @param {string} market 交易對
+ * @returns {number} 價格
+ * @customfunction
+ * @example =binance_price("ADAUSDT")
+ * 
+ */
+function binance_price(market) {
+  Utilities.sleep(Math.random() * 1000);
+  const data = getBinanceProvider().getPrice(market);
+  return parseFloat(data?.lastPrice);
+}
+
+
+/**
+ * 取得binance的24h價格變化
+ * @param {string} market 交易對
+ * @returns {number} 價格變化(1 ~ -1)
+ * @customfunction
+ * @example =binance_price_change24h("ADAUSDT")
+ */
+function binance_price_change24h(market) {
+  Utilities.sleep(Math.random() * 1000);
+  const data = getBinanceProvider().getPrice(market);
+  return parseFloat(data?.priceChangePercent) / 100;
+}
+
+/**
+ * 取得binance的抵押借貸資料
  * @param {string} collateralAsset 抵押資產
  * @param {string} loanAsset 負債資產(可用逗號分隔)
  * @param {"tvl"|"collateralAmount"|"loanAmount"} type 資料類型
+ * @returns {number} 數量
+ * @customfunction
+ * @example =binance_loan("BTC", "USDT", "collateralAmount")
  */
 function binance_loan(collateralAsset, loanAsset, type = "collateralAmount") {
-  Utilities.sleep(Math.random() * 1000)
+  Utilities.sleep(Math.random() * 1000);
   const list = getBinanceProvider().getLoanList();
   const loanAssList = loanAsset.split(",").map((asset) => asset.trim());
   let result = 0;
   for (let loan of list) {
-    if (loanAssList.includes(loan.loanAsset) && (collateralAsset === "any" || loan.collateralAsset === collateralAsset)) {
+    if (
+      loanAssList.includes(loan.loanAsset) &&
+      (collateralAsset === "any" || loan.collateralAsset === collateralAsset)
+    ) {
       console.log(loan);
       result += parseFloat(loan[type]);
     }
@@ -49,26 +95,32 @@ function binance_loan(collateralAsset, loanAsset, type = "collateralAmount") {
 }
 
 /**
- * Google Sheet函式 - 幣安錢包資產
+ * 幣安錢包資產
  * @param name 資產Symbol(BTC、ETH、USDT...)
  * @returns {number} 數量
+ * @customfunction
+ * @example =binance_wallet_asset_amount("BTC")
  */
 function binance_wallet_asset_amount(name) {
-  Utilities.sleep(Math.random() * 1000)
+  Utilities.sleep(Math.random() * 1000);
   const assetList = getBinanceProvider().getAssetList();
   const asset = assetList.find((_asset) => {
     return _asset.asset.toLowerCase() === name.trim().toLowerCase();
   });
-  return parseFloat(parseFloat(asset?.free ?? 0) + parseFloat(asset?.locked ?? 0));
+  return parseFloat(
+    parseFloat(asset?.free ?? 0) + parseFloat(asset?.locked ?? 0)
+  );
 }
 
 /**
- * Google Sheet函式 - 幣安活期賺幣資產
+ * 幣安活期賺幣資產
  * @param name 資產Symbol(BTC、ETH、USDT...)
  * @returns 數量
+ * @customfunction
+ * @example =binance_earn_asset_amount("BTC")
  */
 function binance_earn_asset_amount(name) {
-  Utilities.sleep(Math.random() * 10000)
+  Utilities.sleep(Math.random() * 10000);
   const assetList = getBinanceProvider().getEarnList();
   const asset = assetList.find((_asset) => {
     return _asset.asset.toLowerCase() === name.trim().toLowerCase();
@@ -77,32 +129,41 @@ function binance_earn_asset_amount(name) {
 }
 
 /**
- * Google Sheet函式 - 取得dexscreener價格
+ * 取得dexscreener價格
  * @param address 代幣地址，https://dexscreener.com/
  * @returns 價格
+ * @customfunction
+ * @example =dexscreener_price("0x6b175474e89094c44da98b954eedeac495271d0f")
  */
 function dexscreener_price(address) {
-  Utilities.sleep(Math.random() * 1000)
+  Utilities.sleep(Math.random() * 1000);
   return parseFloat(getDexscreenerProvider().getDexscreenerData(address).price);
 }
 
 /**
- * Google Sheet函式 - 取得dexscreener價格24h變化
+ * 取得dexscreener價格24h變化
  * @param address 代幣地址，https://dexscreener.com/
  * @returns 價格變化(1 ~ -1)
+ * @customfunction
+ * @example =dexscreener_price_change24h("0x6b175474e89094c44da98b954eedeac495271d0f")
  */
 function dexscreener_price_change24h(address) {
-  Utilities.sleep(Math.random() * 1000)
-  return parseFloat(getDexscreenerProvider().getDexscreenerData(address).priceChange24h) / 100;
+  Utilities.sleep(Math.random() * 1000);
+  return (
+    parseFloat(
+      getDexscreenerProvider().getDexscreenerData(address).priceChange24h
+    ) / 100
+  );
 }
 
 /**
- * Google Sheet函式 - 取得pendle代幣價格
+ * 取得pendle代幣價格
  * @param address 代幣地址
- * @returns 價格
+ * @returns {number} 價格
+ * @customfunction
  */
 function pendle_price(chainId, address) {
-  Utilities.sleep(Math.random() * 1000)
+  Utilities.sleep(Math.random() * 1000);
   return parseFloat(getPendleProvider().getAssetsPrice(chainId, address));
 }
 
@@ -139,7 +200,9 @@ class PendleProvider {
     }
 
     try {
-      const res = UrlFetchApp.fetch(`https://api-v2.pendle.finance/core/v1/${chainId}/assets/${address}`);
+      const res = UrlFetchApp.fetch(
+        `https://api-v2.pendle.finance/core/v1/${chainId}/assets/${address}`
+      );
       const result = JSON.parse(res)?.price?.usd || 0;
 
       if (result) {
@@ -152,7 +215,6 @@ class PendleProvider {
 
     return 0;
   }
-
 }
 
 function getBinanceProvider() {
@@ -190,8 +252,8 @@ class BinanceProvider {
   getOrderList() {
     const res = this.fetch("GET", "/api/v3/allOrders", {
       symbol: "ETHUSDT",
-      limit: 1000
-    })
+      limit: 1000,
+    });
     return res;
   }
 
@@ -203,7 +265,12 @@ class BinanceProvider {
     let result = {};
 
     try {
-      result = this.fetch("GET", "/api/v3/ticker/24hr", { symbol: market }, false);
+      result = this.fetch(
+        "GET",
+        "/api/v3/ticker/24hr",
+        { symbol: market },
+        false
+      );
       this.putCache(market, result);
     } catch (e) {
       console.error(e);
@@ -220,7 +287,9 @@ class BinanceProvider {
     const result = [];
 
     try {
-      const res = this.fetch("GET", "/sapi/v2/loan/flexible/ongoing/orders", { limit: 100 });
+      const res = this.fetch("GET", "/sapi/v2/loan/flexible/ongoing/orders", {
+        limit: 100,
+      });
       const rows = res?.rows ?? [];
       for (let row of rows) {
         result.push({
@@ -228,8 +297,8 @@ class BinanceProvider {
           loanAmount: row.totalDebt,
           collateralAsset: row.collateralCoin,
           collateralAmount: row.collateralAmount,
-          tvl: row.currentLTV
-        })
+          tvl: row.currentLTV,
+        });
       }
       this.putCache("loan/flexible/ongoing/orders", result);
     } catch (e) {
@@ -248,13 +317,15 @@ class BinanceProvider {
     const result = [];
 
     try {
-      const res = this.fetch("GET", "/sapi/v1/simple-earn/flexible/position", { size: 100 });
+      const res = this.fetch("GET", "/sapi/v1/simple-earn/flexible/position", {
+        size: 100,
+      });
       const rows = res?.rows ?? [];
       for (let row of rows) {
         result.push({
           asset: row.asset,
-          amount: row.totalAmount
-        })
+          amount: row.totalAmount,
+        });
       }
       this.putCache("simple-earn/flexible", result);
     } catch (e) {
@@ -292,24 +363,28 @@ class BinanceProvider {
     }
 
     const keys = Object.keys(query);
-    let queryString = keys.map(key => `${key}=${query[key]}`).join("&");
+    let queryString = keys.map((key) => `${key}=${query[key]}`).join("&");
 
-    const headers = {
-    }
+    const headers = {};
     if (sign) {
-      let signature = Utilities.computeHmacSha256Signature(queryString, this.secretKey);
-      signature = signature.map(function (e) {
-        var v = (e < 0 ? e + 256 : e).toString(16);
-        return v.length == 1 ? "0" + v : v;
-      }).join("");
+      let signature = Utilities.computeHmacSha256Signature(
+        queryString,
+        this.secretKey
+      );
+      signature = signature
+        .map(function (e) {
+          var v = (e < 0 ? e + 256 : e).toString(16);
+          return v.length == 1 ? "0" + v : v;
+        })
+        .join("");
       queryString += `&signature=${signature}`;
       headers["X-MBX-APIKEY"] = this.apiKey;
     }
     const options = {
       method: method,
       headers: headers,
-      muteHttpExceptions: true
-    }
+      muteHttpExceptions: true,
+    };
     if (method === "GET") {
       url += `?${queryString}`;
     } else {
@@ -320,6 +395,76 @@ class BinanceProvider {
   }
 }
 
+// Coinmarketcap Api
+
+function getCoinmarketcapProvider() {
+  if (!coinmarketcapProvider) {
+    coinmarketcapProvider = new CoinmarketcapProvider();
+  }
+  return coinmarketcapProvider;
+}
+
+class CoinmarketcapProvider {
+  constructor() {
+    this.cache = CacheService.getDocumentCache();
+    this.getApiKey();
+  }
+
+  getApiKey() {
+    this.apiKey = getParameter("coinmarketcap_api_key");
+  }
+
+  getCache(address) {
+    const cacheKey = `coinmarketcap_${address}`;
+    const cache = this.cache.get(cacheKey);
+    if (cache) {
+      return JSON.parse(cache);
+    }
+    return null;
+  }
+
+  putCache(name, data) {
+    const cacheKey = `coinmarketcap_${name}`;
+    this.cache.put(cacheKey, JSON.stringify(data), CACHE_TIMEOUT);
+  }
+
+  getData(name) {
+    const cache = this.getCache(name);
+    if (cache) {
+      return cache;
+    }
+    const result = {
+      price: 0,
+      priceChange24h: 0,
+    };
+    const res = UrlFetchApp.fetch(
+      `https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?symbol=${name}`,
+      {
+        muteHttpExceptions: true,
+        headers: {
+          "X-CMC_PRO_API_KEY": this.apiKey,
+        },
+      }
+    );
+    try {
+      const data = JSON.parse(res);
+      if (!data.data) {
+        return result;
+      }
+      const coin = data.data[name.toUpperCase()]?.[0];
+      if(!coin) {
+        return result;
+      }
+      result.price = coin.quote.USD.price;
+      result.priceChange24h = coin.quote.USD.percent_change_24h;
+      this.putCache(name, result);
+    } catch (e) {
+      console.log(e);
+    }
+
+    return result;
+  }
+}
 
 // Dexscreener Api
 
@@ -332,7 +477,7 @@ function getDexscreenerProvider() {
 
 class DexscreenerProvider {
   constructor() {
-    this.cache = CacheService.getDocumentCache()
+    this.cache = CacheService.getDocumentCache();
   }
 
   getCache(address) {
@@ -352,13 +497,16 @@ class DexscreenerProvider {
   getDexscreenerData(address) {
     const cache = this.getCache(address);
     if (cache) {
-      // return cache;
+      return cache;
     }
     const result = {
       price: 0,
-      priceChange24h: 0
-    }
-    const res = UrlFetchApp.fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`, { 'muteHttpExceptions': true });
+      priceChange24h: 0,
+    };
+    const res = UrlFetchApp.fetch(
+      `https://api.dexscreener.com/latest/dex/tokens/${address}`,
+      { muteHttpExceptions: true }
+    );
     try {
       const data = JSON.parse(res);
       if (Array.isArray(data.pairs) && data.pairs.length > 0) {
@@ -368,7 +516,7 @@ class DexscreenerProvider {
       }
       this.putCache(address, result);
     } catch (e) {
-      console.log(e)
+      console.log(e);
     }
 
     return result;
