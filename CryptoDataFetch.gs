@@ -1,7 +1,3 @@
-const CACHE_TIMEOUT = 300; // 資料快取時間
-const cache = CacheService.getDocumentCache();
-var dexscreenerProvider, binanceProvider;
-
 /**
  * 建立一個分頁，並命名為Parameter，設定以下資訊
  * | Key | Value |
@@ -10,6 +6,27 @@ var dexscreenerProvider, binanceProvider;
  * | binance_secret_key | {Secret Key} |
  */
 
+const CACHE_TIMEOUT = 20; // 資料快取時間
+const cache = CacheService.getDocumentCache();
+var dexscreenerProvider, binanceProvider, pendleProvider;
+
+function test() {
+  let a = binance_price("ADAUSDT")
+  console.log(a)
+}
+
+
+function binance_price(market) {
+  Utilities.sleep(Math.random() * 1000)
+  const data = getBinanceProvider().getPrice(market);
+  return parseFloat(data?.lastPrice)
+}
+
+function binance_price_change24h(market) {
+  Utilities.sleep(Math.random() * 1000)
+  const data = getBinanceProvider().getPrice(market);
+  return parseFloat(data?.priceChangePercent) / 100
+}
 
 /**
  * Google Sheet函式 - 取得binance的抵押借貸資料
@@ -18,12 +35,14 @@ var dexscreenerProvider, binanceProvider;
  * @param {"tvl"|"collateralAmount"|"loanAmount"} type 資料類型
  */
 function binance_loan(collateralAsset, loanAsset, type = "collateralAmount") {
+  Utilities.sleep(Math.random() * 1000)
   const list = getBinanceProvider().getLoanList();
   const loanAssList = loanAsset.split(",").map((asset) => asset.trim());
   let result = 0;
   for (let loan of list) {
-    if (loanAssList.includes(loan.loanAsset) && loan.collateralAsset === collateralAsset) {
-      result += loan[type];
+    if (loanAssList.includes(loan.loanAsset) && (collateralAsset === "any" || loan.collateralAsset === collateralAsset)) {
+      console.log(loan);
+      result += parseFloat(loan[type]);
     }
   }
   return parseFloat(result);
@@ -35,11 +54,12 @@ function binance_loan(collateralAsset, loanAsset, type = "collateralAmount") {
  * @returns {number} 數量
  */
 function binance_wallet_asset_amount(name) {
+  Utilities.sleep(Math.random() * 1000)
   const assetList = getBinanceProvider().getAssetList();
   const asset = assetList.find((_asset) => {
     return _asset.asset.toLowerCase() === name.trim().toLowerCase();
   });
-  return parseFloat(asset?.free ?? 0);
+  return parseFloat(parseFloat(asset?.free ?? 0) + parseFloat(asset?.locked ?? 0));
 }
 
 /**
@@ -48,6 +68,7 @@ function binance_wallet_asset_amount(name) {
  * @returns 數量
  */
 function binance_earn_asset_amount(name) {
+  Utilities.sleep(Math.random() * 10000)
   const assetList = getBinanceProvider().getEarnList();
   const asset = assetList.find((_asset) => {
     return _asset.asset.toLowerCase() === name.trim().toLowerCase();
@@ -61,6 +82,7 @@ function binance_earn_asset_amount(name) {
  * @returns 價格
  */
 function dexscreener_price(address) {
+  Utilities.sleep(Math.random() * 1000)
   return parseFloat(getDexscreenerProvider().getDexscreenerData(address).price);
 }
 
@@ -70,7 +92,67 @@ function dexscreener_price(address) {
  * @returns 價格變化(1 ~ -1)
  */
 function dexscreener_price_change24h(address) {
+  Utilities.sleep(Math.random() * 1000)
   return parseFloat(getDexscreenerProvider().getDexscreenerData(address).priceChange24h) / 100;
+}
+
+/**
+ * Google Sheet函式 - 取得pendle代幣價格
+ * @param address 代幣地址
+ * @returns 價格
+ */
+function pendle_price(chainId, address) {
+  Utilities.sleep(Math.random() * 1000)
+  return parseFloat(getPendleProvider().getAssetsPrice(chainId, address));
+}
+
+function getPendleProvider() {
+  if (!pendleProvider) {
+    pendleProvider = new PendleProvider();
+  }
+  return pendleProvider;
+}
+
+class PendleProvider {
+  constructor() {
+    this.cache = CacheService.getDocumentCache();
+  }
+
+  getCache(key) {
+    const cacheKey = `pendle_${key}`;
+    const cache = this.cache.get(cacheKey);
+    if (cache) {
+      return JSON.parse(cache);
+    }
+    return null;
+  }
+
+  putCache(key, data) {
+    const cacheKey = `pendle_${key}`;
+    this.cache.put(cacheKey, JSON.stringify(data), CACHE_TIMEOUT);
+  }
+
+  getAssetsPrice(chainId, address) {
+    const cache = this.getCache(`${chainId}_${address}`);
+    if (cache) {
+      return cache;
+    }
+
+    try {
+      const res = UrlFetchApp.fetch(`https://api-v2.pendle.finance/core/v1/${chainId}/assets/${address}`);
+      const result = JSON.parse(res)?.price?.usd || 0;
+
+      if (result) {
+        this.putCache(`${chainId}_${address}`, result);
+      }
+      return result;
+    } catch (e) {
+      console.error(e);
+    }
+
+    return 0;
+  }
+
 }
 
 function getBinanceProvider() {
@@ -105,6 +187,31 @@ class BinanceProvider {
     this.secretKey = getParameter("binance_secret_key");
   }
 
+  getOrderList() {
+    const res = this.fetch("GET", "/api/v3/allOrders", {
+      symbol: "ETHUSDT",
+      limit: 1000
+    })
+    return res;
+  }
+
+  getPrice(market) {
+    const cache = this.getCache(market);
+    if (cache) {
+      return cache;
+    }
+    let result = {};
+
+    try {
+      result = this.fetch("GET", "/api/v3/ticker/24hr", { symbol: market }, false);
+      this.putCache(market, result);
+    } catch (e) {
+      console.error(e);
+    }
+
+    return result;
+  }
+
   getLoanList() {
     const cache = this.getCache("loan/flexible/ongoing/orders");
     if (cache) {
@@ -113,7 +220,7 @@ class BinanceProvider {
     const result = [];
 
     try {
-      const res = this.fetch("GET", "/sapi/v1/loan/flexible/ongoing/orders", { limit: 100 });
+      const res = this.fetch("GET", "/sapi/v2/loan/flexible/ongoing/orders", { limit: 100 });
       const rows = res?.rows ?? [];
       for (let row of rows) {
         result.push({
@@ -245,7 +352,7 @@ class DexscreenerProvider {
   getDexscreenerData(address) {
     const cache = this.getCache(address);
     if (cache) {
-      return cache;
+      // return cache;
     }
     const result = {
       price: 0,
